@@ -1,0 +1,811 @@
+import customtkinter as ctk
+from tkinter import messagebox, ttk
+import mysql.connector
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Настройки подключения к базе данных
+db_config = {
+    'user': 'root',
+    'password': '158358',
+    'host': 'localhost',
+    'database': 'shop_db'
+}
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Данные для входа
+user_data = {
+    "admin": {"password": "1111", "role": "admin"},
+    "user": {"password": "2222", "role": "user"},
+    "meneg": {"password": "3333", "role": "meneg"}
+}
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Окно входа
+def login_window():
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("blue")
+
+    login_win = ctk.CTk()
+    login_win.title("Вход в систему")
+    login_win.geometry("250x250")
+
+    ctk.CTkLabel(login_win, text="Логин").grid(row=0, column=0, pady=10, padx=10)
+    ctk.CTkLabel(login_win, text="Пароль").grid(row=1, column=0, pady=10, padx=10)
+
+    # Выпадающий список для выбора логина
+    login_options = ["admin", "user", "meneg"]
+    role_combobox = ctk.CTkComboBox(login_win, values=login_options)
+    role_combobox.grid(row=0, column=1, pady=10, padx=10)
+    role_combobox.set("admin")  # по умолчанию выбран "admin"
+
+    entry_password = ctk.CTkEntry(login_win, show="*")
+    entry_password.grid(row=1, column=1, pady=10, padx=10)
+
+    # Функция проверки логина
+    def check_login():
+        login = role_combobox.get()  # получаем выбранный логин
+        password = entry_password.get()
+
+        if login in user_data and user_data[login]["password"] == password:
+            role = user_data[login]["role"]
+            messagebox.showinfo("Успех", f"Добро пожаловать, {login}!")
+            login_win.destroy()
+            if role == "admin" or role == "meneg":
+                users_window(role)
+            elif role == "user":
+                view_user_window()
+        else:
+            messagebox.showerror("Ошибка", "Неверный логин или пароль!")
+
+    ctk.CTkButton(login_win, text="Войти", command=check_login, fg_color="green").grid(row=2, column=0, columnspan=2, pady=20)
+
+    login_win.mainloop()
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Окно пользователей
+def users_window(role):
+    user_win = ctk.CTk()
+    user_win.title("Управление пользователями")
+    user_win.geometry("800x600")
+
+    # Таблица пользователей
+    columns_users = ("ID", "Имя", "Логин", "Роль")
+    tree = ttk.Treeview(user_win, columns=columns_users, show='headings')
+    tree.grid(row=0, column=0, columnspan=4, pady=10, padx=10)
+
+    for col in columns_users:
+        tree.heading(col, text=col)
+
+    def fetch_users():
+        """Получение данных пользователей."""
+        for item in tree.get_children():
+            tree.delete(item)
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name, login, role FROM users")
+            rows = cursor.fetchall()
+            for row in rows:
+                tree.insert("", "end", values=row)
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Ошибка базы данных", str(err))
+
+    def add_user():
+        """Добавление нового пользователя."""
+        def save_user():
+            name = entry_name.get()
+            login = entry_login.get()
+            role = entry_role.get()
+
+            if not name or not login or not role:
+                messagebox.showwarning("Ошибка ввода", "Все поля обязательны для заполнения.")
+                return
+
+            try:
+                conn = mysql.connector.connect(**db_config)
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO users (name, login, role) VALUES (%s, %s, %s)", (name, login, role))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Успех", "Пользователь успешно добавлен!")
+                fetch_users()
+                add_win.destroy()
+            except mysql.connector.Error as err:
+                messagebox.showerror("Ошибка базы данных", str(err))
+
+        add_win = ctk.CTkToplevel(user_win)
+        add_win.title("Добавить пользователя")
+        add_win.geometry("300x300")
+
+        ctk.CTkLabel(add_win, text="Имя").grid(row=0, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Логин").grid(row=1, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Роль").grid(row=2, column=0, pady=10, padx=10)
+
+        entry_name = ctk.CTkEntry(add_win)
+        entry_login = ctk.CTkEntry(add_win)
+        entry_role = ctk.CTkEntry(add_win)
+
+        entry_name.grid(row=0, column=1, pady=10, padx=10)
+        entry_login.grid(row=1, column=1, pady=10, padx=10)
+        entry_role.grid(row=2, column=1, pady=10, padx=10)
+
+        ctk.CTkButton(add_win, text="Сохранить", command=save_user).grid(row=3, column=0, columnspan=2, pady=20)
+
+    def delete_user():
+        """Удаление выбранного пользователя."""
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Ошибка", "Выберите пользователя для удаления.")
+            return
+
+        user_id = tree.item(selected_item, "values")[0]
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("Успех", "Пользователь успешно удалён!")
+            fetch_users()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Ошибка базы данных", str(err))
+
+    def edit_user():
+        """Редактирование выбранного пользователя."""
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Ошибка", "Выберите пользователя для редактирования.")
+            return
+
+        user_id, name, login, role = tree.item(selected_item, "values")
+
+        def save_changes():
+            new_name = entry_name.get()
+            new_login = entry_login.get()
+            new_role = entry_role.get()
+
+            if not new_name or not new_login or not new_role:
+                messagebox.showwarning("Ошибка ввода", "Все поля обязательны для заполнения.")
+                return
+
+            try:
+                conn = mysql.connector.connect(**db_config)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE users SET name = %s, login = %s, role = %s WHERE id = %s",
+                    (new_name, new_login, new_role, user_id)
+                )
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Успех", "Пользователь успешно обновлён!")
+                fetch_users()
+                edit_win.destroy()
+            except mysql.connector.Error as err:
+                messagebox.showerror("Ошибка базы данных", str(err))
+
+        edit_win = ctk.CTkToplevel(user_win)
+        edit_win.title("Редактировать пользователя")
+        edit_win.geometry("300x300")
+
+        ctk.CTkLabel(edit_win, text="Имя").grid(row=0, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Логин").grid(row=1, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Роль").grid(row=2, column=0, pady=10, padx=10)
+
+        entry_name = ctk.CTkEntry(edit_win)
+        entry_login = ctk.CTkEntry(edit_win)
+        entry_role = ctk.CTkEntry(edit_win)
+
+        entry_name.insert(0, name)
+        entry_login.insert(0, login)
+        entry_role.insert(0, role)
+
+        entry_name.grid(row=0, column=1, pady=10, padx=10)
+        entry_login.grid(row=1, column=1, pady=10, padx=10)
+        entry_role.grid(row=2, column=1, pady=10, padx=10)
+
+        ctk.CTkButton(edit_win, text="Сохранить", command=save_changes, fg_color="green").grid(row=3, column=0, columnspan=2, pady=20)
+
+    def open_addresses():
+        """Открытие окна управления адресами."""
+        user_win.destroy()
+        addresses_window()
+
+    def open_products():
+        """Открытие окна управления товарами."""
+        user_win.destroy()
+        products_window()
+
+    def open_orders():
+        """Открытие окна управления заказами."""
+        user_win.destroy()
+        orders_window()
+
+    # Кнопки управления
+    ctk.CTkButton(user_win, text="Добавить", command=add_user, fg_color="green").grid(row=1, column=0, pady=10, padx=10)
+    ctk.CTkButton(user_win, text="Редактировать", command=edit_user, fg_color="orange").grid(row=1, column=2, pady=10, padx=10)
+    ctk.CTkButton(user_win, text="Удалить", command=delete_user, fg_color="red").grid(row=1, column=3, pady=10, padx=10)
+    ctk.CTkButton(user_win, text="Перейти к адресам", command=open_addresses).grid(row=1, column=1, pady=10, padx=10)
+    ctk.CTkButton(user_win, text="Товары", command=open_products).grid(row=2, column=1, pady=10, padx=10)
+    ctk.CTkButton(user_win, text="Заказы", command=open_orders).grid(row=3, column=1, pady=10, padx=10)
+
+    fetch_users()
+    user_win.mainloop()
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Окно товаров
+def products_window():
+    product_win = ctk.CTk()
+    product_win.title("Управление товарами")
+    product_win.geometry("900x600")
+
+    # Таблица товаров
+    columns_products = ('article', 'name', 'unit', 'price', 'max_discount', 'manufacturer', 'supplier', 'category', 'current_discount', 'stock_quantity', 'description', 'image')
+    tree = ttk.Treeview(product_win, columns=columns_products, show='headings')
+    tree.grid(row=0, column=0, columnspan=4, pady=10, padx=10)
+
+    for col in columns_products:
+        tree.heading(col, text=col)
+
+    def fetch_products():
+        """Получение данных товаров."""
+        for item in tree.get_children():
+            tree.delete(item)
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            cursor.execute("SELECT article, name, unit, price, max_discount, manufacturer, supplier, category, current_discount, stock_quantity, description, image FROM Products")
+            rows = cursor.fetchall()
+            for row in rows:
+                tree.insert("", "end", values=row)
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Ошибка базы данных", str(err))
+
+    def add_product():
+        """Добавление нового товара."""
+        def save_product():
+            article = entry_article.get()
+            name = entry_name.get()
+            unit = entry_unit.get()
+            price = entry_price.get()
+            max_discount = entry_max_discount.get()
+            manufacturer = entry_manufacturer.get()
+            supplier = entry_supplier.get()
+            category = entry_category.get()
+            current_discount = entry_current_discount.get()
+            stock_quantity = entry_stock_quantity.get()
+            description = entry_description.get()
+            image = entry_image.get()
+
+            if not article or not name or not unit or not price or not stock_quantity:
+                messagebox.showwarning("Ошибка ввода", "Все поля обязательны для заполнения.")
+                return
+
+            try:
+                conn = mysql.connector.connect(**db_config)
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO Products (article, name, unit, price, max_discount, manufacturer, supplier, category, current_discount, stock_quantity, description, image) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                               (article, name, unit, price, max_discount, manufacturer, supplier, category, current_discount, stock_quantity, description, image))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Успех", "Товар успешно добавлен!")
+                fetch_products()
+                add_win.destroy()
+            except mysql.connector.Error as err:
+                messagebox.showerror("Ошибка базы данных", str(err))
+
+        add_win = ctk.CTkToplevel(product_win)
+        add_win.title("Добавить товар")
+        add_win.geometry("400x800")
+
+        ctk.CTkLabel(add_win, text="Артикул").grid(row=0, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Название").grid(row=1, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Единица").grid(row=2, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Цена").grid(row=3, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Макс. скидка").grid(row=4, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Производитель").grid(row=5, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Поставщик").grid(row=6, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Категория").grid(row=7, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Текущая скидка").grid(row=8, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Количество на складе").grid(row=9, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Описание").grid(row=10, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Изображение").grid(row=11, column=0, pady=10, padx=10)
+
+        entry_article = ctk.CTkEntry(add_win)
+        entry_name = ctk.CTkEntry(add_win)
+        entry_unit = ctk.CTkEntry(add_win)
+        entry_price = ctk.CTkEntry(add_win)
+        entry_max_discount = ctk.CTkEntry(add_win)
+        entry_manufacturer = ctk.CTkEntry(add_win)
+        entry_supplier = ctk.CTkEntry(add_win)
+        entry_category = ctk.CTkEntry(add_win)
+        entry_current_discount = ctk.CTkEntry(add_win)
+        entry_stock_quantity = ctk.CTkEntry(add_win)
+        entry_description = ctk.CTkEntry(add_win)
+        entry_image = ctk.CTkEntry(add_win)
+
+        entry_article.grid(row=0, column=1, pady=10, padx=10)
+        entry_name.grid(row=1, column=1, pady=10, padx=10)
+        entry_unit.grid(row=2, column=1, pady=10, padx=10)
+        entry_price.grid(row=3, column=1, pady=10, padx=10)
+        entry_max_discount.grid(row=4, column=1, pady=10, padx=10)
+        entry_manufacturer.grid(row=5, column=1, pady=10, padx=10)
+        entry_supplier.grid(row=6, column=1, pady=10, padx=10)
+        entry_category.grid(row=7, column=1, pady=10, padx=10)
+        entry_current_discount.grid(row=8, column=1, pady=10, padx=10)
+        entry_stock_quantity.grid(row=9, column=1, pady=10, padx=10)
+        entry_description.grid(row=10, column=1, pady=10, padx=10)
+        entry_image.grid(row=11, column=1, pady=10, padx=10)
+
+        ctk.CTkButton(add_win, text="Сохранить", command=save_product, fg_color="green").grid(row=12, column=0, columnspan=2, pady=20)
+
+    def edit_product():
+        """Редактирование выбранного товара."""
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Ошибка", "Выберите товар для редактирования.")
+            return
+
+        article, name, unit, price, max_discount, manufacturer, supplier, category, current_discount, stock_quantity, description, image = tree.item(selected_item, "values")
+
+        def save_changes():
+            new_article = entry_article.get()
+            new_name = entry_name.get()
+            new_unit = entry_unit.get()
+            new_price = entry_price.get()
+            new_max_discount = entry_max_discount.get()
+            new_manufacturer = entry_manufacturer.get()
+            new_supplier = entry_supplier.get()
+            new_category = entry_category.get()
+            new_current_discount = entry_current_discount.get()
+            new_stock_quantity = entry_stock_quantity.get()
+            new_description = entry_description.get()
+            new_image = entry_image.get()
+
+            if not new_article or not new_name or not new_unit or not new_price or not new_stock_quantity:
+                messagebox.showwarning("Ошибка ввода", "Все поля обязательны для заполнения.")
+                return
+
+            try:
+                conn = mysql.connector.connect(**db_config)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE Products SET article = %s, name = %s, unit = %s, price = %s, max_discount = %s, manufacturer = %s, supplier = %s, category = %s, current_discount = %s, stock_quantity = %s, description = %s, image = %s WHERE article = %s",
+                    (new_article, new_name, new_unit, new_price, new_max_discount, new_manufacturer, new_supplier, new_category, new_current_discount, new_stock_quantity, new_description, new_image, article)
+                )
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Успех", "Товар успешно обновлён!")
+                fetch_products()
+                edit_win.destroy()
+            except mysql.connector.Error as err:
+                messagebox.showerror("Ошибка базы данных", str(err))
+
+        edit_win = ctk.CTkToplevel(product_win)
+        edit_win.title("Редактировать товар")
+        edit_win.geometry("400x500")
+
+        ctk.CTkLabel(edit_win, text="Артикул").grid(row=0, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Название").grid(row=1, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Единица").grid(row=2, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Цена").grid(row=3, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Макс. скидка").grid(row=4, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Производитель").grid(row=5, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Поставщик").grid(row=6, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Категория").grid(row=7, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Текущая скидка").grid(row=8, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Количество на складе").grid(row=9, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Описание").grid(row=10, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Изображение").grid(row=11, column=0, pady=10, padx=10)
+
+        entry_article = ctk.CTkEntry(edit_win)
+        entry_name = ctk.CTkEntry(edit_win)
+        entry_unit = ctk.CTkEntry(edit_win)
+        entry_price = ctk.CTkEntry(edit_win)
+        entry_max_discount = ctk.CTkEntry(edit_win)
+        entry_manufacturer = ctk.CTkEntry(edit_win)
+        entry_supplier = ctk.CTkEntry(edit_win)
+        entry_category = ctk.CTkEntry(edit_win)
+        entry_current_discount = ctk.CTkEntry(edit_win)
+        entry_stock_quantity = ctk.CTkEntry(edit_win)
+        entry_description = ctk.CTkEntry(edit_win)
+        entry_image = ctk.CTkEntry(edit_win)
+
+        entry_article.insert(0, article)
+        entry_name.insert(0, name)
+        entry_unit.insert(0, unit)
+        entry_price.insert(0, price)
+        entry_max_discount.insert(0, max_discount)
+        entry_manufacturer.insert(0, manufacturer)
+        entry_supplier.insert(0, supplier)
+        entry_category.insert(0, category)
+        entry_current_discount.insert(0, current_discount)
+        entry_stock_quantity.insert(0, stock_quantity)
+        entry_description.insert(0, description)
+        entry_image.insert(0, image)
+
+        entry_article.grid(row=0, column=1, pady=10, padx=10)
+        entry_name.grid(row=1, column=1, pady=10, padx=10)
+        entry_unit.grid(row=2, column=1, pady=10, padx=10)
+        entry_price.grid(row=3, column=1, pady=10, padx=10)
+        entry_max_discount.grid(row=4, column=1, pady=10, padx=10)
+        entry_manufacturer.grid(row=5, column=1, pady=10, padx=10)
+        entry_supplier.grid(row=6, column=1, pady=10, padx=10)
+        entry_category.grid(row=7, column=1, pady=10, padx=10)
+        entry_current_discount.grid(row=8, column=1, pady=10, padx=10)
+        entry_stock_quantity.grid(row=9, column=1, pady=10, padx=10)
+        entry_description.grid(row=10, column=1, pady=10, padx=10)
+        entry_image.grid(row=11, column=1, pady=10, padx=10)
+
+        ctk.CTkButton(edit_win, text="Сохранить", command=save_changes, fg_color="green").grid(row=12, column=0,
+                                                                                               columnspan=2, pady=20)
+
+    def delete_product():
+        """Удаление выбранного товара."""
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Ошибка", "Выберите товар для удаления.")
+            return
+
+        article = tree.item(selected_item, "values")[0]
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM Products WHERE article = %s", (article,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("Успех", "Товар успешно удалён!")
+            fetch_products()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Ошибка базы данных", str(err))
+
+        # Кнопки управления
+    def back():
+        """Вернуться назад к управлению пользователями."""
+        product_win.destroy()
+        users_window("admin")
+
+    ctk.CTkButton(product_win, text="Добавить", command=add_product, fg_color="green").grid(row=1, column=0, pady=10,padx=10)
+    ctk.CTkButton(product_win, text="Редактировать", command=edit_product, fg_color="orange").grid(row=2, column=0,pady=10, padx=10)
+    ctk.CTkButton(product_win, text="Удалить", command=delete_product, fg_color="red").grid(row=3, column=0, pady=10,padx=10)
+    ctk.CTkButton(product_win, text="Вернуться назад", command=back).grid(row=4, column=0, pady=10, padx=10)
+
+    fetch_products()
+    product_win.mainloop()
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Окно заказов
+def orders_window():
+    orders_win = ctk.CTk()
+    orders_win.title("Управление заказами")
+    orders_win.geometry("1800x600")
+
+    # Таблица заказов
+    columns_orders = (
+    'id', 'order_number', 'order_contents', 'order_date', 'delivery_date', 'pickup_point', 'customer_name',
+    'pickup_code', 'order_status')
+    tree = ttk.Treeview(orders_win, columns=columns_orders, show='headings')
+    tree.grid(row=0, column=0, columnspan=4, pady=10, padx=10)
+
+    for col in columns_orders:
+        tree.heading(col, text=col)
+
+    def fetch_orders():
+        """Получение данных заказов."""
+        for item in tree.get_children():
+            tree.delete(item)
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, order_number, order_contents, order_date, delivery_date, pickup_point, customer_name, pickup_code, order_status FROM orders")
+            rows = cursor.fetchall()
+            for row in rows:
+                tree.insert("", "end", values=row)
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Ошибка базы данных", str(err))
+
+    def add_order():
+        """Добавление нового заказа."""
+
+        def save_order():
+            order_number = entry_order_number.get()
+            order_contents = entry_order_contents.get()
+            order_date = entry_order_date.get()
+            delivery_date = entry_delivery_date.get()
+            pickup_point = entry_pickup_point.get()
+            customer_name = entry_customer_name.get()
+            pickup_code = entry_pickup_code.get()
+            order_status = entry_order_status.get()
+
+            if not order_number or not order_contents or not customer_name:
+                messagebox.showwarning("Ошибка ввода",
+                                       "Поля 'Номер заказа', 'Содержимое заказа' и 'Имя клиента' обязательны для заполнения.")
+                return
+
+            try:
+                conn = mysql.connector.connect(**db_config)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO orders (order_number, order_contents, order_date, delivery_date, pickup_point, customer_name, pickup_code, order_status) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (order_number, order_contents, order_date, delivery_date, pickup_point, customer_name, pickup_code,
+                     order_status))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Успех", "Заказ успешно добавлен!")
+                fetch_orders()
+                add_win.destroy()
+            except mysql.connector.Error as err:
+                messagebox.showerror("Ошибка базы данных", str(err))
+
+        add_win = ctk.CTkToplevel(orders_win)
+        add_win.title("Добавить заказ")
+        add_win.geometry("400x400")
+
+        ctk.CTkLabel(add_win, text="Номер заказа").grid(row=0, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Содержимое заказа").grid(row=1, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Дата заказа").grid(row=2, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Дата доставки").grid(row=3, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Пункт выдачи").grid(row=4, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Имя клиента").grid(row=5, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Код для получения").grid(row=6, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Статус заказа").grid(row=7, column=0, pady=10, padx=10)
+
+        entry_order_number = ctk.CTkEntry(add_win)
+        entry_order_contents = ctk.CTkEntry(add_win)
+        entry_order_date = ctk.CTkEntry(add_win)
+        entry_delivery_date = ctk.CTkEntry(add_win)
+        entry_pickup_point = ctk.CTkEntry(add_win)
+        entry_customer_name = ctk.CTkEntry(add_win)
+        entry_pickup_code = ctk.CTkEntry(add_win)
+        entry_order_status = ctk.CTkEntry(add_win)
+
+        entry_order_number.grid(row=0, column=1, pady=10, padx=10)
+        entry_order_contents.grid(row=1, column=1, pady=10, padx=10)
+        entry_order_date.grid(row=2, column=1, pady=10, padx=10)
+        entry_delivery_date.grid(row=3, column=1, pady=10, padx=10)
+        entry_pickup_point.grid(row=4, column=1, pady=10, padx=10)
+        entry_customer_name.grid(row=5, column=1, pady=10, padx=10)
+        entry_pickup_code.grid(row=6, column=1, pady=10, padx=10)
+        entry_order_status.grid(row=7, column=1, pady=10, padx=10)
+
+        ctk.CTkButton(add_win, text="Сохранить", command=save_order, fg_color="green").grid(row=8, column=0,
+                                                                                            columnspan=2, pady=20)
+
+    def delete_order():
+        """Удаление выбранного заказа."""
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Ошибка", "Выберите заказ для удаления.")
+            return
+
+        order_id = tree.item(selected_item, "values")[0]
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM orders WHERE id = %s", (order_id,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("Успех", "Заказ успешно удалён!")
+            fetch_orders()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Ошибка базы данных", str(err))
+
+
+    def back():
+        """Вернуться назад к управлению пользователями."""
+        orders_win.destroy()
+        users_window("admin")
+
+
+    # Кнопки управления заказами
+    ctk.CTkButton(orders_win, text="Добавить", command=add_order, fg_color="green").grid(row=1, column=0, pady=10,
+                                                                                         padx=10)
+    ctk.CTkButton(orders_win, text="Удалить", command=delete_order, fg_color="red").grid(row=2, column=0, pady=10,
+                                                                                         padx=10)
+    ctk.CTkButton(orders_win, text="Вернуться назад", command=back).grid(row=3, column=0, pady=10, padx=10)
+
+    fetch_orders()
+    orders_win.mainloop()
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Окно адресов
+def addresses_window():
+    addr_win = ctk.CTk()
+    addr_win.title("Управление адресами")
+    addr_win.geometry("1000x600")
+
+
+    # Таблица адресов
+    columns_addresses = ("ID", "Почтовый индекс", "Город", "Улица", "Номер дома")
+    tree = ttk.Treeview(addr_win, columns=columns_addresses, show='headings')
+    tree.grid(row=0, column=0, columnspan=4, pady=10, padx=10)
+
+    for col in columns_addresses:
+        tree.heading(col, text=col)
+
+
+    # Загрузка данных адресов
+    def fetch_addresses():
+        """Получение данных адресов из базы данных."""
+        for item in tree.get_children():
+            tree.delete(item)
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, postal_code, city, street, house_number FROM addresses")
+            rows = cursor.fetchall()
+            for row in rows:
+                tree.insert("", "end", values=row)
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Ошибка базы данных", str(err))
+
+    def add_address():
+        """Добавление нового адреса."""
+        def save_address():
+            postal_code = entry_postal_code.get()
+            city = entry_city.get()
+            street = entry_street.get()
+            house_number = entry_house_number.get()
+
+            if not postal_code or not city or not street or not house_number:
+                messagebox.showwarning("Ошибка ввода", "Все поля обязательны для заполнения.")
+                return
+
+            try:
+                conn = mysql.connector.connect(**db_config)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO addresses (postal_code, city, street, house_number) VALUES (%s, %s, %s, %s)",
+                    (postal_code, city, street, house_number)
+                )
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Успех", "Адрес успешно добавлен!")
+                fetch_addresses()
+                add_win.destroy()
+            except mysql.connector.Error as err:
+                messagebox.showerror("Ошибка базы данных", str(err))
+
+        add_win = ctk.CTkToplevel(addr_win)
+        add_win.title("Добавить адрес")
+        add_win.geometry("300x400")
+
+        ctk.CTkLabel(add_win, text="Почтовый индекс").grid(row=0, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Город").grid(row=1, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Улица").grid(row=2, column=0, pady=10, padx=10)
+        ctk.CTkLabel(add_win, text="Номер дома").grid(row=3, column=0, pady=10, padx=10)
+
+        entry_postal_code = ctk.CTkEntry(add_win)
+        entry_city = ctk.CTkEntry(add_win)
+        entry_street = ctk.CTkEntry(add_win)
+        entry_house_number = ctk.CTkEntry(add_win)
+
+        entry_postal_code.grid(row=0, column=1, pady=10, padx=10)
+        entry_city.grid(row=1, column=1, pady=10, padx=10)
+        entry_street.grid(row=2, column=1, pady=10, padx=10)
+        entry_house_number.grid(row=3, column=1, pady=10, padx=10)
+
+        ctk.CTkButton(add_win, text="Сохранить", command=save_address,fg_color="green").grid(row=4, column=0, columnspan=2, pady=20)
+
+    def delete_address():
+        """Удаление выбранного адреса."""
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Ошибка", "Выберите адрес для удаления.")
+            return
+
+        address_id = tree.item(selected_item, "values")[0]
+        try:
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM addresses WHERE id = %s", (address_id,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("Успех", "Адрес успешно удалён!")
+            fetch_addresses()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Ошибка базы данных", str(err))
+
+    def edit_address():
+        """Редактирование выбранного адреса."""
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Ошибка", "Выберите адрес для редактирования.")
+            return
+
+        address_id, postal_code, city, street, house_number = tree.item(selected_item, "values")
+
+        def save_changes():
+            new_postal_code = entry_postal_code.get()
+            new_city = entry_city.get()
+            new_street = entry_street.get()
+            new_house_number = entry_house_number.get()
+
+            if not new_postal_code or not new_city or not new_street or not new_house_number:
+                messagebox.showwarning("Ошибка ввода", "Все поля обязательны для заполнения.")
+                return
+
+            try:
+                conn = mysql.connector.connect(**db_config)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE addresses SET postal_code = %s, city = %s, street = %s, house_number = %s WHERE id = %s",
+                    (new_postal_code, new_city, new_street, new_house_number, address_id)
+                )
+                conn.commit()
+                cursor.close()
+                conn.close()
+                messagebox.showinfo("Успех", "Адрес успешно обновлён!")
+                fetch_addresses()
+                edit_win.destroy()
+            except mysql.connector.Error as err:
+                messagebox.showerror("Ошибка базы данных", str(err))
+
+        edit_win = ctk.CTkToplevel(addr_win)
+        edit_win.title("Редактировать адрес")
+        edit_win.geometry("300x400")
+
+        ctk.CTkLabel(edit_win, text="Почтовый индекс").grid(row=0, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Город").grid(row=1, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Улица").grid(row=2, column=0, pady=10, padx=10)
+        ctk.CTkLabel(edit_win, text="Номер дома").grid(row=3, column=0, pady=10, padx=10)
+
+        entry_postal_code = ctk.CTkEntry(edit_win)
+        entry_city = ctk.CTkEntry(edit_win)
+        entry_street = ctk.CTkEntry(edit_win)
+        entry_house_number = ctk.CTkEntry(edit_win)
+
+        entry_postal_code.insert(0, postal_code)
+        entry_city.insert(0, city)
+        entry_street.insert(0, street)
+        entry_house_number.insert(0, house_number)
+
+        entry_postal_code.grid(row=0, column=1, pady=10, padx=10)
+        entry_city.grid(row=1, column=1, pady=10, padx=10)
+        entry_street.grid(row=2, column=1, pady=10, padx=10)
+        entry_house_number.grid(row=3, column=1, pady=10, padx=10)
+
+        ctk.CTkButton(edit_win, text="Сохранить", command=save_changes).grid(row=4, column=0, columnspan=2, pady=20)
+
+    def back():
+        """Вернуться назад к управлению пользователями."""
+        addr_win.destroy()
+        users_window("admin")
+
+
+    # Кнопки управления
+    ctk.CTkButton(addr_win, text="Добавить адрес", command=add_address, fg_color="green").grid(row=1, column=0, pady=10, padx=10)
+    ctk.CTkButton(addr_win, text="Редактировать", command=edit_address, fg_color="orange").grid(row=1, column=1, pady=10, padx=10)
+    ctk.CTkButton(addr_win, text="Удалить", command=delete_address, fg_color="red").grid(row=1, column=2, pady=10, padx=10)
+    ctk.CTkButton(addr_win, text="Вернуться назад", command=back).grid(row=1, column=3, pady=10, padx=10)
+
+    fetch_addresses()
+    addr_win.mainloop()
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Запуск окна входа
+login_window()

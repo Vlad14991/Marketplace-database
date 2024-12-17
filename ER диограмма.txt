@@ -1,0 +1,58 @@
++-----------------+
+|     Users       |
++-----------------+
+| id (PK)         |
+| name            |
+| login           |
+| role            |
++-----------------+
+          |
+          | 1
+          |
+          | M
++-----------------+
+|     Orders      |
++-----------------+
+| id (PK)         |
+| order_number    |
+| order_contents  |
+| order_date      |
+| delivery_date   |
+| pickup_point    |
+| customer_name   |
+| pickup_code     |
+| order_status    |
+| user_id (FK)    |
++-----------------+
+          |
+          | M
+          |
+          | 1
++-----------------+
+|   Addresses     |
++-----------------+
+| id (PK)         |
+| postal_code     |
+| city            |
+| street          |
+| house_number    |
++-----------------+
+
++-----------------+
+|    Products     |
++-----------------+
+| article (PK)    |
+| name            |
+| unit            |
+| price           |
+| max_discount    |
+| manufacturer    |
+| supplier        |
+| category        |
+| current_discount|
+| stock_quantity  |
+| description     |
+| image           |
++-----------------+
+
+
